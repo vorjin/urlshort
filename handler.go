@@ -2,16 +2,11 @@
 package urlshort
 
 import (
+	"encoding/json"
 	"gopkg.in/yaml.v2"
 	"net/http"
 )
 
-// MapHandler will return an http.HandlerFunc (which also
-// implements http.Handler) that will attempt to map any
-// paths (keys in the map) to their corresponding URL (values
-// that each key in the map points to, in string format).
-// If the path is not provided in the map, then the fallback
-// http.Handler will be called instead.
 func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if value, ok := pathsToUrls[r.URL.Path]; ok {
@@ -23,22 +18,21 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 	}
 }
 
-// YAMLHandler will parse the provided YAML and then return
-// an http.HandlerFunc (which also implements http.Handler)
-// that will attempt to map any paths to their corresponding
-// URL. If the path is not provided in the YAML, then the
-// fallback http.Handler will be called instead.
-//
-// YAML is expected to be in the format:
-//
-//   - path: /some-path
-//     url: https://www.some-url.com/demo
-//
-// The only errors that can be returned all related to having
-// invalid YAML data.
-//
-// See MapHandler to create a similar http.HandlerFunc via
-// a mapping of paths to urls.
+func buildMap(mappings []URLMapping) map[string]string {
+	pathToURLMap := make(map[string]string)
+
+	for _, mapping := range mappings {
+		pathToURLMap[mapping.Path] = mapping.URL
+	}
+
+	return pathToURLMap
+}
+
+type URLMapping struct {
+	Path string `json:"path" yaml:"path"`
+	URL  string `json:"url" yaml:"url"`
+}
+
 func YAMLHandler(yml []byte, fallback http.Handler) (http.HandlerFunc, error) {
 	parsedYaml, err := parseYaml(yml)
 	if err != nil {
@@ -46,11 +40,6 @@ func YAMLHandler(yml []byte, fallback http.Handler) (http.HandlerFunc, error) {
 	}
 	pathMap := buildMap(parsedYaml)
 	return MapHandler(pathMap, fallback), nil
-}
-
-type URLMapping struct {
-	Path string `yaml:"path"`
-	URL  string `yaml:"url"`
 }
 
 func parseYaml(yml []byte) ([]URLMapping, error) {
@@ -63,12 +52,21 @@ func parseYaml(yml []byte) ([]URLMapping, error) {
 	return mappings, nil
 }
 
-func buildMap(mappings []URLMapping) map[string]string {
-	pathToURLMap := make(map[string]string)
+func JSONHandler(json []byte, fallback http.Handler) (http.HandlerFunc, error) {
+	parsedJSON, err := parseJSON(json)
+	if err != nil {
+		return nil, err
+	}
+	pathMap := buildMap(parsedJSON)
+	return MapHandler(pathMap, fallback), nil
+}
 
-	for _, mapping := range mappings {
-		pathToURLMap[mapping.Path] = mapping.URL
+func parseJSON(jsonFile []byte) ([]URLMapping, error) {
+	var mappings []URLMapping
+	err := json.Unmarshal(jsonFile, &mappings)
+	if err != nil {
+		panic(err)
 	}
 
-	return pathToURLMap
+	return mappings, nil
 }
